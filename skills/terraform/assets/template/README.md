@@ -6,7 +6,7 @@ One AWS account (`__ACCOUNT_ID__`, `__REGION__`), two environments: **stg** and 
 shared/         state bucket + GitHub OIDC + the plan/apply/readonly roles
 envs/stg/       root module, state key envs/stg/terraform.tfstate
 envs/prod/      root module, state key envs/prod/terraform.tfstate
-modules/        network · ec2-app-host · rds-mysql · s3-bucket · security-group
+modules/        reusable modules, called from the env stacks
 scripts/        aws-inventory.sh -- read-only sweep that scaffolds import blocks
 justfile        every command, shared with CI
 ```

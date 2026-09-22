@@ -42,6 +42,7 @@ fmt-check:
 validate:
     #!/usr/bin/env bash
     set -euo pipefail
+    shopt -s nullglob  # a repo may have no modules yet
     for dir in {{ stacks }} modules/*/; do
       echo "==> ${dir%/}"
       terraform -chdir="$dir" init -backend=false -input=false > /dev/null

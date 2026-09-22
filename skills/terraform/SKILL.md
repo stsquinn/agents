@@ -49,8 +49,8 @@ scripts/scaffold.sh <dest> --prefix acme --account-id 123456789012 \
   [--aws-profile acme]
 ```
 
-It copies [assets/template/](assets/template/) (shared, envs/stg, envs/prod,
-five modules, justfile, CI, inventory script), fills every `__TOKEN__`, and
+It copies [assets/template/](assets/template/) (shared, envs/stg, envs/prod, an
+empty modules/, justfile, CI, inventory script), fills every `__TOKEN__`, and
 refuses a non-empty destination or a leftover token. Then run `just check` in
 the new repo and hand the human the bootstrap steps from its README.
 

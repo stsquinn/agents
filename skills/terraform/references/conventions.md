@@ -42,28 +42,30 @@ resource name carries the environment (`<prefix>-<env>-...`) and
 | Adopted policy documents | `<stack>/policies/<name>.json`, verbatim |
 
 - Environment values live in a `locals` block at the top of `envs/<env>/main.tf`
-  (`env`, `account_id`, `region`, CIDRs). Resources owned elsewhere (e.g. a
-  CloudFormation stack) are referenced from a `local` map of IDs.
+  (`env`, `account_id`, `region`, CIDRs, ...). Resources owned elsewhere (e.g.
+  a CloudFormation stack) are referenced from a `local` map of IDs.
 - Maps, not lists, for anything keyed (subnets by AZ, rules by name): deleting
   one list element renumbers the rest and Terraform recreates them.
-- A new environment: copy `envs/stg/`, change `local.env`, the backend `key`
-  and the CIDRs, add the stack to the justfile's `stacks` and to the CI matrix.
+- A new environment: copy `envs/stg/`, change `local.env` and the backend
+  `key`, add the stack to the justfile's `stacks` and to the CI matrix.
 
 ## Modules
 
-- Each module has `main.tf`, `variables.tf`, `outputs.tf`, `versions.tf` and no
-  provider block. Its provider lock file is gitignored; lock files are
-  committed only in root stacks.
-- Hardened by default: encryption on, IMDSv2 required, no public IPs, rules as
-  standalone `aws_vpc_security_group_{ingress,egress}_rule` resources (inline
-  rule blocks churn every plan and cannot be imported one at a time).
-- Adoption knobs (`manage_*`, `tag_*`, `add_name_tag`, `name_overrides`,
-  `root_volume_encrypted`, `disable_api_termination`, ...) exist so a live
-  resource can be imported unchanged. **Every knob defaults to the hardened
-  greenfield behaviour**; a new knob must too, so existing callers still plan
-  clean. After changing a module, re-plan every stack that uses it.
-- `create_before_destroy` on security groups; `ignore_changes = [ami, user_data]`
-  on hosts (they are pets; a new AMI must not silently replace a running host).
+- One directory per module under `modules/`, each with `main.tf`,
+  `variables.tf`, `outputs.tf` and `versions.tf`, and no provider block. Lock
+  files are committed only in root stacks; `modules/*/.terraform.lock.hcl` is
+  gitignored.
+- Create a module only for a pattern repeated across stacks. A one-off resource
+  belongs directly in its stack.
+- Defaults are the hardened greenfield choice (encryption on, IMDSv2 required,
+  no public IPs). A setting that exists only to import a live resource unchanged
+  must default to that same hardened behaviour, so existing callers still plan
+  clean. After changing a module, re-plan every stack that calls it.
+- Security group rules as standalone `aws_vpc_security_group_{ingress,egress}_rule`
+  resources: inline rule blocks churn every plan and cannot be imported one at
+  a time. `create_before_destroy` on groups.
+- Long-lived hosts: `ignore_changes = [ami, user_data]`, so a newer AMI or an edited
+  bootstrap script never silently replaces or restarts a running host.
 
 ## Commands and CI
 

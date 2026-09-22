@@ -5,7 +5,7 @@
 # moment anything changes, and full of account detail
 .inventory/
 
-# Dependency lock files belong to root modules (bootstrap, account, envs/*),
+# Dependency lock files belong to root modules (shared, envs/*),
 # where they pin the provider version that actually gets applied. Under
 # modules/ they are noise: those directories are consumed via `source =`,
 # never applied directly.

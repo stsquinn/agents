@@ -16,7 +16,7 @@
 #     imports/<env>.tf    import blocks, commented out, address pre-filled
 #     imports/<env>.sh    the same as `terraform import` command lines
 #
-# Terraform addresses are guessed from Name tags and this repo's module layout.
+# Terraform addresses are guessed from Name tags.
 # They are suggestions: verify one before uncommenting it.
 
 set -euo pipefail
@@ -553,7 +553,7 @@ rm -f "$OUT/.chunk.tsv" "$OUT/.chunk.err"
 
 # --- import scaffolding ----------------------------------------------------
 
-# One module name per resource: AcmeProd-PaymentsAPI becomes payments_api.
+# One address name per resource: AcmeProd-PaymentsAPI becomes payments_api.
 slug() {
     printf '%s' "$1" |
         sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' |
@@ -572,85 +572,24 @@ field() { printf '%s' "$2" | tr ',' '\n' | sed -n "s/^$1=//p" | head -1; }
 declare -A INSTANCE_NAME=() # instance id  -> Name tag
 declare -A SG_NAME=()       # security group id -> group name
 
-# The module address this resource most likely belongs at. A guess: AZ, RULE
-# and TODO are placeholders for a human.
+# A plain resource address named after the resource, or after its owner for
+# rules, Elastic IPs and volumes. A starting point: rename to fit the stack.
 address() {
     local type=$1 id=$2 name=$3 detail=$4
-    local s az tier host
+    local s host
 
     s=$(slug "$name")
     [[ -n $s ]] || s=$(slug "$id")
     [[ -n $s ]] || s=TODO
 
     case $type in
-    aws_vpc)
-        echo 'module.network.aws_vpc.this'
-        ;;
-    aws_subnet)
-        az=$(field az "$detail")
-        tier=$(field tier "$detail")
-        if [[ -z $tier ]]; then
-            case $name in
-            *priv*) tier=private ;;
-            *pub*) tier=public ;;
-            *)
-                if [[ $(field autopublic "$detail") == true ]]; then
-                    tier=public
-                else
-                    tier=private
-                fi
-                ;;
-            esac
-        fi
-        echo "module.network.aws_subnet.${tier}[\"${az}\"]"
-        ;;
-    aws_internet_gateway)
-        echo 'module.network.aws_internet_gateway.this[0]'
-        ;;
-    aws_nat_gateway)
-        echo 'module.network.aws_nat_gateway.this["AZ"]'
-        ;;
-    aws_route_table)
-        if [[ $name == *priv* ]]; then
-            echo 'module.network.aws_route_table.private["AZ"]'
-        else
-            echo 'module.network.aws_route_table.public[0]'
-        fi
-        ;;
-    aws_route_table_association)
-        echo 'module.network.aws_route_table_association.public["AZ"]'
-        ;;
-    aws_flow_log)
-        echo 'module.network.aws_flow_log.this[0]'
+    aws_vpc_security_group_ingress_rule | aws_vpc_security_group_egress_rule)
+        host=$(field sg "$detail")
+        [[ -z $host || -z ${SG_NAME[$host]:-} ]] || s="$(slug "${SG_NAME[$host]}")_$(slug "$id")"
         ;;
     aws_eip)
         host=$(field instance "$detail")
-        if [[ -n $host && -n ${INSTANCE_NAME[$host]:-} ]]; then
-            echo "module.$(slug "${INSTANCE_NAME[$host]}").aws_eip.this[0]"
-        else
-            echo 'module.network.aws_eip.nat["AZ"]'
-        fi
-        ;;
-    aws_security_group)
-        if [[ $(field default "$detail") == true ]]; then
-            echo 'module.network.aws_default_security_group.this'
-        else
-            echo "module.${s}.aws_security_group.this"
-        fi
-        ;;
-    aws_vpc_security_group_ingress_rule | aws_vpc_security_group_egress_rule)
-        host=$(field sg "$detail")
-        if [[ -n $host && -n ${SG_NAME[$host]:-} ]]; then
-            s=$(slug "${SG_NAME[$host]}")
-        fi
-        if [[ $type == *egress* ]]; then
-            echo "module.${s}.aws_vpc_security_group_egress_rule.all"
-        else
-            echo "module.${s}.aws_vpc_security_group_ingress_rule.this[\"RULE\"]"
-        fi
-        ;;
-    aws_instance)
-        echo "module.${s}.aws_instance.this"
+        [[ -z $host || -z ${INSTANCE_NAME[$host]:-} ]] || s=$(slug "${INSTANCE_NAME[$host]}")
         ;;
     aws_ebs_volume)
         host=$(field instance "$detail")
@@ -660,27 +599,13 @@ address() {
         case $(field device "$detail") in
         xvda | sda1 | nvme0n1)
             echo "SKIP:root volume of ${host:-?} -- comes in with the instance"
+            return
             ;;
-        *) echo "module.${s}.aws_ebs_volume.data" ;;
         esac
         ;;
-    aws_db_instance | aws_db_subnet_group | aws_db_parameter_group)
-        echo "module.${s}.${type}.this"
-        ;;
-    aws_s3_bucket)
-        echo "module.${s}.aws_s3_bucket.this"
-        ;;
-    aws_cloudwatch_log_group)
-        if [[ $name == /aws/vpc/* ]]; then
-            echo 'module.network.aws_cloudwatch_log_group.flow_logs[0]'
-        else
-            echo "aws_cloudwatch_log_group.${s}"
-        fi
-        ;;
-    *)
-        echo "${type}.${s}"
-        ;;
     esac
+
+    echo "${type}.${s}"
 }
 
 # Tab is IFS whitespace, so `read` folds a run of them into one separator and an
@@ -694,8 +619,7 @@ while IFS=$US read -r _ type id name _rest; do
     esac
 done < <(tr '\t' "$US" <"$CLASSIFIED")
 
-# modules/s3-bucket is a bucket plus a fixed set of sub-resources, and every one
-# of them imports on the bucket name.
+# A bucket's other aspects are separate resources, each importing on the bucket name.
 S3_COMPANIONS=(
     aws_s3_bucket_public_access_block
     aws_s3_bucket_ownership_controls
@@ -738,7 +662,7 @@ gen_imports() {
         echo '#'
         echo "#   cp $OUT/imports/$env.tf $stack/imports.tf"
         echo '#'
-        echo "# Addresses are guessed from Name tags and this repo's modules. Uncomment a"
+        echo "# Addresses are guessed from Name tags; rename to fit the stack. Uncomment a"
         echo '# block only together with the HCL that declares the resource, then'
         echo "#   just plan $stack"
         echo '# until it reads 0 to add, 0 to change, 0 to destroy. Delete the block once'
@@ -777,7 +701,7 @@ gen_imports() {
         if [[ $type == aws_s3_bucket ]]; then
             for companion in "${S3_COMPANIONS[@]}"; do
                 emit "$tf" "$sh" "$stack" \
-                    "module.$(slug "$name").${companion}.this" "$id" \
+                    "${companion}.$(slug "$name")" "$id" \
                     "${companion} -- only if the live bucket has one"
                 count=$((count + 1))
             done

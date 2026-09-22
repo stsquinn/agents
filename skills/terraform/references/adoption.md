@@ -55,7 +55,7 @@ graph LR
 - **One live object used by several module instances** (a security group or
   instance profile shared by three hosts) cannot live inside a per-host module:
   it would need several addresses for one object. Declare it standalone and
-  pass it in with `manage_security_group = false` / `manage_iam = false`.
+  pass its ID in; the module must be able to skip creating its own.
 
 ## Import blocks
 
@@ -76,78 +76,81 @@ graph LR
 
 ## Traps by resource
 
+Stated as resource attributes. When a module wraps the resource, it needs a
+variable that can express the live value; add one whose default keeps the
+module's current behaviour.
+
 ### Everything
 
-- `default_tags` writes tags onto every adopted resource. Comment it out in an
-  env stack while it adopts. Where the stack already manages tagged resources
+- `default_tags` writes tags onto every adopted resource. Comment it out in a
+  stack while it adopts. Where the stack already manages tagged resources
   (e.g. `shared/`), add an untagged provider alias
   (`provider "aws" { alias = "adopted" ... }`) and put adopted resources on it.
 - Copy every string verbatim, typos included -- descriptions, Name tags,
   `description = ""` versus absent. Empty-string and unset are different values.
+- Untagged live resources get `tags = null`, not `{}`; generated Name tags
+  (`Name = var.name`) must be switchable off, or overridable with the live value.
 - ForceNew attribute unknown or computed? Pass `null`, never a guess.
 - Hand edits made in the console (an extra bucket-policy statement, a tag)
   must be declared, or the plan removes them.
 
-### Network (`modules/network`)
+### Network
 
-- Live names: `name_overrides`. Live subnets without a Tier tag:
-  `tag_subnet_tier = false`.
-- `aws_default_security_group` with no rules revokes the default group's rules:
-  `manage_default_security_group = false` unless verified unused.
-- Each default route is its own `aws_route` and needs its own import, or the
-  apply fails `RouteAlreadyExists`.
-- An existing flow log's destination and role are ForceNew: keep
-  `enable_flow_logs = false` rather than replace a working delivery.
-- The module is declared as a unit: import all its resources together.
+- Keep live names; do not let a naming scheme rename VPCs, subnets and route
+  tables during adoption.
+- `aws_default_security_group` with no rule blocks revokes the default group's
+  rules. Leave it unmanaged unless its rules are declared or it is verified unused.
+- A default route declared as its own `aws_route` needs its own import
+  (`<rtb-id>_0.0.0.0/0`), or the apply fails `RouteAlreadyExists`.
+- An existing flow log's destination and role are ForceNew: leave it unmanaged
+  rather than replace a working delivery.
+- Import everything a network definition declares in one change, or the plan
+  proposes creating subnets that already exist.
 
-### Security groups (`modules/security-group`)
+### Security groups
 
 - `description` is immutable. A mismatch replaces the group and detaches it
   from everything using it.
-- Rules are standalone resources; the map key is the import contract. Renaming
-  a key destroys and recreates that rule.
-- Untagged rules/groups: `tag_rules = false`, `add_name_tag = false`. A Name tag
-  that differs from the group name: `add_name_tag = false` plus
-  `tags = { Name = "<live tag>" }`.
-- The default egress rule carries `description = "All outbound"`; live rules
-  usually have none, so pass `egress_rules = { all = { cidr_ipv4 = "0.0.0.0/0" } }`.
+- Rules as standalone resources; their `for_each` key is the import contract.
+  Renaming a key destroys and recreates that rule.
+- Rule `description` absent live must be absent in config; a default like
+  `"All outbound"` on an egress rule is a diff.
 
-### EC2 (`modules/ec2-app-host`)
+### EC2
 
-- `root_volume_encrypted` is ForceNew: match live (usually `false`).
+- `root_block_device.encrypted` is ForceNew: match live (often `false`).
   Encrypting is a snapshot-and-replace project.
 - `disable_api_termination`: match live, or the plan switches protection off.
-- `root_volume_delete_on_termination`: match live.
-- `associate_public_ip = null` (ForceNew and computed).
-- `instance_metadata_tags`, `metadata_hop_limit`, root size/type, key name:
-  match live. Root volumes and their untagged state (`tag_root_volume = false`)
-  come in with the instance -- never import them separately.
-- `user_data` is in `ignore_changes`: changing it stops and starts the host.
-  Never copy live user_data into the repo; it often holds credentials.
+- `root_block_device.delete_on_termination`: match live.
+- `associate_public_ip_address = null` (ForceNew and computed).
+- `metadata_options` (tokens, hop limit, instance tags), root size and type,
+  `key_name`, `iam_instance_profile`: match live. The root volume comes in with
+  the instance -- never import it separately.
+- `ignore_changes = [user_data]`: changing it stops and starts the host. Never
+  copy live user_data into the repo; it often holds credentials.
 - Key pairs cannot be imported (AWS does not return the public key); reference
   `key_name` only.
-- Adopt an Elastic IP as a plain `aws_eip`, not `assign_eip`: the module writes
-  `<name>-eip` and forces `associate_public_ip_address = false`.
+- An attached Elastic IP: plain `aws_eip` with `instance` and its live tags.
 
-### RDS (`modules/rds-mysql`)
+### RDS
 
 - `storage_encrypted` is ForceNew; `manage_master_user_password = true` rotates
   the password into Secrets Manager (connection drop); `publicly_accessible`
   moves the endpoint. Match live on all three.
 - Set `deletion_protection` and `prevent_destroy` before importing.
-- AWS-owned default subnet/parameter groups cannot be owned: pass their names
-  with the `manage_*` knobs off.
+- AWS-owned default subnet/parameter groups cannot be owned: reference them by
+  name.
 - Terraform-only attributes are not read from AWS. Import sets
   `skip_final_snapshot = true` in state, so config must say `true`.
   `apply_immediately` never reaches zero; that one diff is state-only.
 - Remove a database from state (`terraform state rm`) before deleting it in
   AWS, or the next plan builds a fresh empty one.
 
-### S3 (`modules/s3-bucket`)
+### S3
 
 - Each aspect (versioning, encryption, lifecycle, CORS, policy, ownership,
   public access block) is its own resource importing on the bucket name. Adopt
-  only aspects that match; switch the rest off with the `manage_*` knobs.
+  only aspects that match live; leave the rest unmanaged.
 - `aws_s3_bucket_policy` replaces the whole policy. Adopting it with a partial
   document drops grants (e.g. CloudFront OAC) and breaks consumers.
 
