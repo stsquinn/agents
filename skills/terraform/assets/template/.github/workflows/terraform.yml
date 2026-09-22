@@ -1,0 +1,121 @@
+name: terraform
+
+on:
+  pull_request:
+    paths:
+      - "shared/**"
+      - "envs/**"
+      - "modules/**"
+      - "justfile"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "Stack to act on"
+        required: true
+        type: choice
+        options:
+          - shared
+          - envs/stg
+          - envs/prod
+      action:
+        description: "plan or apply"
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.16.1"
+  AWS_REGION: __REGION__
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  # No AWS credentials needed: `just check` validates with -backend=false.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - uses: extractions/setup-just@v3
+
+      - run: just check
+
+  plan:
+    if: github.event_name == 'pull_request' || inputs.action == 'plan'
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: ${{ github.event_name == 'pull_request' && fromJSON('["shared","envs/stg","envs/prod"]') || fromJSON(format('["{0}"]', inputs.stack)) }}
+    concurrency:
+      group: tf-${{ matrix.stack }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - uses: extractions/setup-just@v3
+
+      # Read-only role. It can take the state lock and nothing else.
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: just init ${{ matrix.stack }}
+
+      - name: plan
+        run: |
+          set -euo pipefail
+          just plan ${{ matrix.stack }} -no-color -out=tfplan | tee plan.txt
+          {
+            echo "## \`${{ matrix.stack }}\`"
+            echo '```terraform'
+            tail -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  apply:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+    needs: validate
+    runs-on: ubuntu-latest
+    # Matches the OIDC subject conditions on the apply role. Add required
+    # reviewers to these environments in repository settings. Anything that is
+    # not envs/stg -- including account-wide IAM in shared/ -- takes the
+    # stricter prod gate.
+    environment: ${{ inputs.stack == 'envs/stg' && 'stg' || 'prod' }}
+    concurrency:
+      group: tf-${{ inputs.stack }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - uses: extractions/setup-just@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: just init ${{ inputs.stack }}
+
+      - run: just apply ${{ inputs.stack }} -auto-approve
