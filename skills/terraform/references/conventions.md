@@ -1,7 +1,7 @@
 # Boilerplate conventions
 
 Contents: [Layout](#layout) · [State](#state) · [Where things go](#where-things-go) ·
-[Modules](#modules) · [Commands and CI](#commands-and-ci) ·
+[Modules](#modules) · [Commands](#commands) ·
 [Bootstrap](#bootstrap) · [Style](#style)
 
 ## Layout
@@ -11,7 +11,7 @@ shared/           account-wide stack, applied before the environments
 envs/<env>/       one root module per environment (stg, prod)
 modules/<name>/   reusable, consumed via `source = "../../modules/<name>"`
 scripts/          aws-inventory.sh: read-only sweep → import scaffolding
-justfile          every command; CI runs the same recipes
+justfile          every command
 ```
 
 A **stack** is a directory. Environments are separated by directory, never by
@@ -44,7 +44,7 @@ resource name carries the environment (`<prefix>-<env>-...`) and
 - Maps, not lists, for anything keyed (subnets by AZ, rules by name): deleting
   one list element renumbers the rest and Terraform recreates them.
 - A new environment: copy `envs/stg/`, change `local.env` and the backend
-  `key`, add the stack to the justfile's `stacks` and to the CI matrix.
+  `key`, add the stack to the justfile's `stacks`.
 
 ## Modules
 
@@ -64,25 +64,17 @@ resource name carries the environment (`<prefix>-<env>-...`) and
 - Long-lived hosts: `ignore_changes = [ami, user_data]`, so a newer AMI or an edited
   bootstrap script never silently replaces or restarts a running host.
 
-## Commands and CI
+## Commands
 
 ```bash
-export AWS_PROFILE=<profile>     # CI uses OIDC and sets no profile
+export AWS_PROFILE=<profile>
 just init envs/stg
 just plan envs/stg               # extra flags pass through: -target=module.x
 just plan-ro envs/prod           # readonly role: cannot take the lock
-just check                       # fmt-check + validate (offline), what CI runs
+just check                       # fmt-check + validate (offline)
 just fmt · just lint             # tflint --recursive
 just inventory                   # scripts/aws-inventory.sh (read-only)
 ```
-
-- CI (`.github/workflows/terraform.yml`): `validate` needs no credentials;
-  pull requests plan every stack under the plan role; apply is
-  `workflow_dispatch` only, gated by a GitHub environment (`stg` for
-  `envs/stg`, `prod` for everything else, `shared/` included).
-- Anything CI runs must be a `just` recipe, so local and CI never diverge.
-- Pause the `pull_request` trigger while a stack carries import blocks that a
-  shared runner would evaluate against live AWS; restore it after.
 
 ## Bootstrap
 

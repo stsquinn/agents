@@ -1,8 +1,7 @@
 # Terraform helpers. Run `just` to list them.
 #
 # Stack is a directory: shared, envs/stg, envs/prod.
-# Locally, `export AWS_PROFILE=__AWS_PROFILE__` first. CI authenticates via OIDC and
-# must not have a profile set, so nothing here sets one.
+# `export AWS_PROFILE=__AWS_PROFILE__` first; nothing here sets a profile.
 
 stacks := "shared envs/stg envs/prod"
 
@@ -21,7 +20,7 @@ plan stack *args:
 plan-ro stack:
     terraform -chdir={{ stack }} plan -input=false -lock=false
 
-# terraform apply  (prefer the workflow_dispatch pipeline for anything deployed)
+# terraform apply  (just apply envs/stg)
 apply stack *args:
     terraform -chdir={{ stack }} apply -input=false {{ args }}
 
@@ -29,7 +28,7 @@ apply stack *args:
 output stack:
     terraform -chdir={{ stack }} output
 
-# Everything CI checks
+# fmt-check + validate, offline
 check: fmt-check validate
 
 fmt:
