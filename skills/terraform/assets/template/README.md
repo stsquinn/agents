@@ -8,7 +8,7 @@ envs/stg/       root module, state key envs/stg/terraform.tfstate
 envs/prod/      root module, state key envs/prod/terraform.tfstate
 modules/        reusable modules, called from the env stacks
 scripts/        aws-inventory.sh -- read-only sweep that scaffolds import blocks
-justfile        every command, shared with CI
+justfile        every command
 ```
 
 One bucket holds all state, separated by key, locked natively (`use_lockfile`).
@@ -30,8 +30,7 @@ just migrate-state      # after adding its backend "s3" block
 ```
 
 The state bucket `__PREFIX__-tfstate-__ACCOUNT_ID__` must exist before the
-environments init. CI reads the `AWS_PLAN_ROLE_ARN` and `AWS_APPLY_ROLE_ARN`
-repository variables.
+environments init.
 
 ## Commands
 
@@ -39,7 +38,6 @@ repository variables.
 just                    # list recipes
 just plan envs/stg
 just plan-ro envs/prod  # readonly role: no state lock
-just check              # fmt-check + validate, exactly what CI runs
+just check              # fmt-check + validate, offline
 ```
 
-PRs get a plan. Apply is `workflow_dispatch` only, behind a GitHub environment.
