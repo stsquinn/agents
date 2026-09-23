@@ -25,7 +25,7 @@ plan-ro stack:
 apply stack *args:
     terraform -chdir={{ stack }} apply -input=false {{ args }}
 
-# terraform output  (just output shared)
+# terraform output  (just output envs/stg)
 output stack:
     terraform -chdir={{ stack }} output
 
@@ -56,17 +56,17 @@ lint:
 inventory *args:
     ./scripts/aws-inventory.sh {{ args }}
 
-# First run only: creates the state bucket
+# First run only: applies shared/ on local state
 bootstrap:
     #!/usr/bin/env bash
     set -euo pipefail
     terraform -chdir=shared init -input=false
     terraform -chdir=shared apply -input=false
     echo
-    echo "Next: uncomment the backend block in shared/versions.tf, then run"
+    echo "Next: add the backend \"s3\" block to shared/, then run"
     echo "  just migrate-state"
 
-# Move shared/ state off the laptop into the bucket it just created
+# Move shared/ state off the laptop into the state bucket
 migrate-state:
     terraform -chdir=shared init -migrate-state
 

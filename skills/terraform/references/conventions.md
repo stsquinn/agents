@@ -2,13 +2,12 @@
 
 Contents: [Layout](#layout) · [State](#state) · [Where things go](#where-things-go) ·
 [Modules](#modules) · [Commands and CI](#commands-and-ci) ·
-[Permissions](#permissions) · [Bootstrap](#bootstrap) · [Style](#style)
+[Bootstrap](#bootstrap) · [Style](#style)
 
 ## Layout
 
 ```
-shared/           applied once: state bucket, GitHub OIDC provider,
-                  readonly/plan/apply roles, account-wide IAM
+shared/           account-wide stack, applied before the environments
 envs/<env>/       one root module per environment (stg, prod)
 modules/<name>/   reusable, consumed via `source = "../../modules/<name>"`
 scripts/          aws-inventory.sh: read-only sweep → import scaffolding
@@ -26,10 +25,8 @@ resource name carries the environment (`<prefix>-<env>-...`) and
   `envs/<env>/terraform.tfstate`.
 - Locking is native: `use_lockfile = true`, no DynamoDB table. It requires
   `required_version = ">= 1.11"` (experimental in 1.10).
-- The bucket has versioning, `prevent_destroy`, a TLS-only policy and
-  noncurrent-version expiry. It is the only way back from a bad state push.
-- `shared/` bootstraps on local state because it creates the bucket; see
-  [Bootstrap](#bootstrap).
+- The bucket must exist before any stack inits. When Terraform manages it,
+  `shared/` owns it and starts on local state; see [Bootstrap](#bootstrap).
 
 ## Where things go
 
@@ -87,31 +84,15 @@ just inventory                   # scripts/aws-inventory.sh (read-only)
 - Pause the `pull_request` trigger while a stack carries import blocks that a
   shared runner would evaluate against live AWS; restore it after.
 
-## Permissions
-
-| Role | Who | Can |
-|---|---|---|
-| `<prefix>-terraform-readonly` | engineers, AI agents | `ReadOnlyAccess` minus secret/parameter values, `kms:Decrypt`, and assuming plan/apply |
-| `<prefix>-terraform-plan` | PR workflow via OIDC | the same + read state + write `*.tflock` only |
-| `<prefix>-terraform-apply` | `workflow_dispatch` from `main` or a protected environment | apply |
-
-`ReadOnlyAccess` includes `secretsmanager:GetSecretValue`; the
-`deny-sensitive-reads` policy subtracts it. So a
-`data "aws_secretsmanager_secret_version"` fails at plan -- deliberately, since
-values read at plan time land in state.
-
 ## Bootstrap
 
 ```bash
-just bootstrap                  # shared/ on local state; creates the bucket
-# uncomment the backend "s3" block in shared/versions.tf
+just bootstrap                  # shared/ on local state
+# add the backend "s3" block to shared/
 just migrate-state              # move shared/ state into the bucket
-just output shared              # → AWS_PLAN_ROLE_ARN, AWS_APPLY_ROLE_ARN repo variables
 ```
 
 Do apply and migrate in one sitting; until then state sits on one laptop.
-If the account already has a GitHub OIDC provider, creating it fails with
-`EntityAlreadyExists`: import it instead.
 
 ## Style
 

@@ -3,7 +3,7 @@
 # Inventory the live AWS account and scaffold Terraform import blocks.
 #
 # Every call is a describe/list -- nothing here mutates AWS, so it runs under
-# __PREFIX__-terraform-readonly. A call the role denies is recorded and skipped, never
+# a read-only role. A call the role denies is recorded and skipped, never
 # fatal.
 #
 # Output layout:

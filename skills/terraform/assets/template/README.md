@@ -3,7 +3,7 @@
 One AWS account (`__ACCOUNT_ID__`, `__REGION__`), two environments: **stg** and **prod**.
 
 ```
-shared/         state bucket + GitHub OIDC + the plan/apply/readonly roles
+shared/         account-wide stack, applied before the environments
 envs/stg/       root module, state key envs/stg/terraform.tfstate
 envs/prod/      root module, state key envs/prod/terraform.tfstate
 modules/        reusable modules, called from the env stacks
@@ -18,30 +18,20 @@ Environments are directories, not workspaces.
 
 ```mermaid
 graph LR
-  A["1 · shared/<br/>local state"] -->|creates bucket| B[("state bucket")]
-  A -->|"2 · uncomment backend<br/>init -migrate-state"| B
-  A -->|"3 · repo variables<br/>AWS_PLAN_ROLE_ARN<br/>AWS_APPLY_ROLE_ARN"| C["GitHub Actions"]
-  B --> D["4 · envs/stg · envs/prod"]
-  C --> D
+  A["1 · shared/<br/>local state"] --> B["2 · add backend s3<br/>just migrate-state"]
+  B --> C["3 · envs/stg · envs/prod"]
 ```
 
 ```bash
 export AWS_PROFILE=__AWS_PROFILE__
 
-just bootstrap
-# uncomment the backend block in shared/versions.tf
-just migrate-state
-just output shared      # -> set the two repository variables
+just bootstrap          # shared/ on local state
+just migrate-state      # after adding its backend "s3" block
 ```
 
-## Permissions
-
-```mermaid
-graph LR
-  H["engineer · AI agent"] -->|sts:AssumeRole| RO["__PREFIX__-terraform-readonly"]
-  PR["pull request"] -->|OIDC| PL["__PREFIX__-terraform-plan"]
-  WD["workflow_dispatch<br/>main or protected env"] -->|OIDC| AP["__PREFIX__-terraform-apply"]
-```
+The state bucket `__PREFIX__-tfstate-__ACCOUNT_ID__` must exist before the
+environments init. CI reads the `AWS_PLAN_ROLE_ARN` and `AWS_APPLY_ROLE_ARN`
+repository variables.
 
 ## Commands
 

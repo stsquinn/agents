@@ -1,6 +1,6 @@
 ---
 name: terraform
-description: Works in an AWS Terraform boilerplate built from directory stacks — shared/ for the state bucket and account-wide IAM, per-environment envs/ root modules, and reusable modules/. It has one S3 state bucket with native lockfile locking, a justfile shared by CI and humans, and GitHub OIDC plan/apply roles. Use it to scaffold a new infrastructure repo from this boilerplate, to add resources, modules or environments to a repo with this layout, or to adopt existing hand-built AWS resources into shared/ or envs/ with import blocks, from one host to every IAM user in the account, so the first plan changes nothing. Not for general Terraform questions, other clouds, provider development, HCP Terraform Stacks, or repos with a different layout unless asked to migrate them to it.
+description: Works in an AWS Terraform boilerplate built from directory stacks — shared/ for account-wide resources, per-environment envs/ root modules, and reusable modules/. It has one S3 backend with native lockfile locking, a justfile shared by CI and humans, and a GitHub Actions plan/apply workflow. Use it to scaffold a new infrastructure repo from this boilerplate, to add resources, modules or environments to a repo with this layout, or to adopt existing hand-built AWS resources into shared/ or envs/ with import blocks, from one host to every IAM user in the account, so the first plan changes nothing. Not for general Terraform questions, other clouds, provider development, HCP Terraform Stacks, or repos with a different layout unless asked to migrate them to it.
 ---
 
 # Terraform boilerplate
@@ -49,8 +49,8 @@ scripts/scaffold.sh <dest> --prefix acme --account-id 123456789012 \
   [--aws-profile acme]
 ```
 
-It copies [assets/template/](assets/template/) (shared, envs/stg, envs/prod, an
-empty modules/, justfile, CI, inventory script), fills every `__TOKEN__`, and
+It copies [assets/template/](assets/template/) (empty shared/ and modules/,
+envs/stg, envs/prod, justfile, CI, inventory script), fills every `__TOKEN__`, and
 refuses a non-empty destination or a leftover token. Then run `just check` in
 the new repo and hand the human the bootstrap steps from its README.
 
