@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Skill"
+  short_description: "Create validated workspace skills"
+  default_prompt: "Use $create-skill to design and create a new workspace-local skill."

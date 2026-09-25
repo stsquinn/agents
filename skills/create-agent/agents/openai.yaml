@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Agent"
+  short_description: "Create tailored workspace agents"
+  default_prompt: "Use $create-agent to design and create a new workspace agent."
